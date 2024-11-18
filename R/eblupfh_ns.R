@@ -1,28 +1,33 @@
-#' EBLUPs based on a Fay-Herriot Model.
+#' Synthetic Estimator.
 #'
-#' @description This function gives the Empirical Best Linear Unbiased Prediction (EBLUP) or Empirical Best (EB) predictor under normality based on a Fay-Herriot model.
+#' @description Synthetic estimator is one of the simple methods to obtain predicted values of mean specific area parameters, which the direct estimates are unknown. Based on estimated of parameter coefficient models using Empirical Best Unbiased Prediction (EBLUP), the synthetic estimator is obtained by calibrating the estimated parameter coefficient to the auxiliary variables.
+#'
+#' @details
+#' The model is defined as response ~ auxiliary variables, where the response variable, of numeric type, may contain NA values.
+#' When the response variable contains NA, it will be estimated using a synthetic estimator.
 #'
 #' @references
 #' \enumerate{
 #'  \item Rao, J. N., & Molina, I. (2015). Small area estimation. John Wiley & Sons.
-#'}
+#' }
 #'
 #' @param formula an object of class formula that contains a description of the model to be fitted. The variables included in the formula must be contained in the data.
 #' @param data a data frame or a data frame extension (e.g. a tibble).
 #' @param vardir vector or column names from data that contain variance sampling from the direct estimator for each area.
-#' @param method Fitting method can be chosen between 'ML' and 'REML'.
+#' @param method Fitting method can be chosen between 'ML' and 'REML'
 #' @param maxiter maximum number of iterations allowed in the Fisher-scoring algorithm. Default is 100 iterations.
 #' @param precision convergence tolerance limit for the Fisher-scoring algorithm. Default value is 0.0001.
 #' @param scale scaling auxiliary variable or not, default value is FALSE.
 #' @param print_result print coefficient or not, default value is TRUE.
 #'
-#' @returns The function returns a list with the following objects (\code{df_res} and \code{fit}):
+#' @returns The function returns a list with the following objects \code{df_res} and \code{fit}:
 #' \code{df_res} a data frame that contains the following columns: \cr
 #'    * \code{y} variable response \cr
 #'    * \code{eblup} estimated results for each area \cr
 #'    * \code{random_effect} random effect for each area \cr
 #'    * \code{vardir} variance sampling from the direct estimator for each area \cr
 #'    * \code{mse} Mean Square Error \cr
+#'    * \code{cluster} cluster information for each area \cr
 #'    * \code{rse} Relative Standart Error (%) \cr
 #'
 #' \code{fit} a list containing the following objects: \cr
@@ -38,39 +43,40 @@
 #'    * \code{goodness} vector containing several goodness-of-fit measures: loglikehood, AIC, and BIC \cr
 #'
 #'
-#' @details
-#' The model has a form that is response ~ auxiliary variables.
-#' where numeric type response variables can contain NA.
-#' When the response variable contains NA it will be estimated with cluster information.
 #'
 #' @export
 #' @examples
 #' library(saens)
 #'
-#' m1 <- eblupfh(y ~ x1 + x2 + x3, data = na.omit(mys), vardir = "var")
-#' m1 <- eblupfh(y ~ x1 + x2 + x3, data = na.omit(mys), vardir = ~var)
+#' m1 <- eblupfh_ns(y ~ x1 + x2 + x3, data = mys, vardir = "var")
+#' m1 <- eblupfh_ns(y ~ x1 + x2 + x3, data = mys, vardir = ~var)
 #'
 #' @md
-
-eblupfh <- function(formula, data, vardir, method = "REML",
-                    maxiter = 100, precision = 1e-04, scale = FALSE,
-                    print_result = TRUE) {
+eblupfh_ns <- function(formula, data, vardir, method = "REML",
+                       maxiter = 100, precision = 1e-04, scale = FALSE,
+                       print_result = TRUE) {
   y <- stats::model.frame(formula, data, na.action = NULL)[[1]]
+  nonsample <- ifelse(is.na(y), TRUE, FALSE)
   # data hasil
   df_res <- data.frame(
     y = y,
     eblup = NA,
-    random_effect = NA,
-    vardir = NA,
+    # random_effect = NA,
+    # vardir = NA,
     # g1 = NA, g2 = NA, g3 = NA,
     mse = NA
   )
 
-
-  if (any(is.na(y))) {
-    cli::cli_abort("variable {all.names(formula[2])} contains NA values, please use eblupfh_cluster function")
+  if (!any(is.na(y))) {
+    # eblup tanpa cluster
+    datas <- data
+  } else {
+    # data sampled
+    datas <- data[!nonsample, ]
+    # data nonsampled
+    datans <- data[nonsample, ]
   }
-  datas <- data
+
 
   vardir_name <- vardir
   vardir <- .get_variable(datas, vardir)
@@ -80,6 +86,8 @@ eblupfh <- function(formula, data, vardir, method = "REML",
 
   if (scale) {
     X <- scale(X)
+    my_scale <- attr(X, "scaled:scale")
+    my_center <- attr(X, "scaled:center")
   }
 
   # Cek pilihan metode
@@ -119,7 +127,6 @@ eblupfh <- function(formula, data, vardir, method = "REML",
   sigma2_u <- stats::median(vardir)
   R <- diag(vardir, m)
   Z <- diag(1, m)
-
 
   # Fisher scoring algorithm
   if (method == "ML") {
@@ -248,23 +255,39 @@ eblupfh <- function(formula, data, vardir, method = "REML",
       mse2d[d] <- g1d[d] + g2d[d] + 2 * g3d[d]
     }
   }
-  # MSE with matrix -----------------------------------
-  # g1 <- G - G %*% t(Z) %*% Vi %*% Z %*% G
-  # aT <- Z %*% G %*% t(Z) %*% Vi
-  # dT <- X - aT %*% X
-  # g2 <- dT %*% solve(Xt %*% Vi %*% X) %*% t(dT)
-  # g2 <- dT %*% Q %*% t(dT)
 
-  df_res$random_effect <- u
-  df_res$eblup <- as.vector(eblup_est)
-  # df_res$g1 <- g1d
-  # df_res$g2 <- g2d
-  # df_res$g3 <- g3d
-  df_res$vardir <- vardir
-  df_res$mse <- mse2d
+  # df_res[!nonsample, "random_effect"] <- u
+  # df_res[!nonsample, "vardir"] <- vardir
+  df_res[!nonsample, "eblup"] <- eblup_est
+  df_res[!nonsample, "mse"] <- mse2d
+
+
+  # Non sampled -----------------------------------------------
+  if (sum(nonsample) >= 1) {
+    Xns <- stats::model.matrix(formula, stats::model.frame(~., datans, na.action = stats::na.pass))
+    if (scale) {
+      Xns <- scale(Xns, center = my_center, scale = my_scale)
+    }
+
+    # df_res[nonsample, "random_effect"] <- NA
+    # var_beta1 <- solve(t(X) %*% solve(diag(vardir + sigma2_u)) %*% X)
+    # print(all.equal(Q, var_beta1))
+    var_beta1 <- Q
+
+    # y_cap1 <- eblup_est
+    # var_y_cap1 <- mse2d
+
+    #Estimasi Area tidak tersampel dengan Syntetis
+    y_cap2 <- Xns %*% BETA
+    var_y_cap2 <- diag(sigma2_u + Xns %*% var_beta1 %*% t(Xns))
+
+    df_res[nonsample, "mse"] <- var_y_cap2
+    df_res[nonsample, "eblup"] <- y_cap2
+  }
+
   df_res$rse <- sqrt(df_res$mse) * 100 / df_res$eblup
 
-  result$df_res <- df_res
+  result$df_res <- df_res[, -1]
   result$fit$estcoef <- coef_est
   result$fit$goodness <- c(loglike = loglike, AIC = AIC, BIC = BIC)
   result$fit$n_iter <- k
@@ -278,38 +301,4 @@ eblupfh <- function(formula, data, vardir, method = "REML",
   }
 
   return(invisible(result))
-}
-
-
-
-
-
-# Fungsi Penolong ---------------------------------------------------------
-
-# extract variable from data frame
-.get_variable <- function(data, variable) {
-  if (length(variable) == nrow(data)) {
-    return(variable)
-  } else if (methods::is(variable, "character")) {
-    if (variable %in% colnames(data)) {
-      variable <- data[[variable]]
-    }else{
-      cli::cli_abort('variable "{variable}" is not found in the data')
-    }
-  } else if (methods::is(variable, "formula")) {
-    # extract column name (class character) from formula
-    variable <- data[[all.vars(variable)]]
-  } else {
-    cli::cli_abort('variable "{variable}" is not found in the data')
-  }
-  return(variable)
-}
-
-.get_value <- function(x, klas, ns, fun = mean) {
-  agg_klas <- stats::aggregate(x, list(klas[!ns]), FUN = fun, na.rm = TRUE)
-  x_ns <- dplyr::left_join(
-    data.frame(Group.1 = klas[ns]) ,
-    agg_klas, by = 'Group.1'
-  )$x
-  return(x_ns)
 }

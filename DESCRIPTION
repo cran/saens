@@ -2,7 +2,7 @@ Package: saens
 Type: Package
 Title: Small Area Estimation with Cluster Information for Estimation of
         Non-Sampled Areas
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(
       person("Ridson", "Al Farizal P", role = c("aut", "cre","cph"), email = "alfrzlp@gmail.com", comment = c(ORCID = "0000-0003-0617-0214")),
       person("Azka", "Ubaidillah", role = "aut", email = "azka@stis.ac.id", comment = c(ORCID = "0000-0002-3597-0459")) 
@@ -17,10 +17,10 @@ Depends: R (>= 4.00)
 RoxygenNote: 7.2.0
 Imports: cli, dplyr, ggplot2, methods, rlang, stats, tidyr
 NeedsCompilation: no
-Packaged: 2024-10-24 21:00:08 UTC; alfrz
+Packaged: 2024-11-18 01:40:35 UTC; alfrz
 Author: Ridson Al Farizal P [aut, cre, cph]
     (<https://orcid.org/0000-0003-0617-0214>),
   Azka Ubaidillah [aut] (<https://orcid.org/0000-0002-3597-0459>)
 Maintainer: Ridson Al Farizal P <alfrzlp@gmail.com>
 Repository: CRAN
-Date/Publication: 2024-10-24 21:10:02 UTC
+Date/Publication: 2024-11-18 04:40:03 UTC
